@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manifest // Batch Certificate Renamer</title>
+    
+    <!-- Client-side Parsing & PDF Processing Engines -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+    <style>
+        :root {
+            --bg-cream: #fbfaf7;
+            --ink-navy: #1a2636;
+            --ink-muted: #4a5568;
+            --border-color: #d1c7bd;
+            --seal-burgundy: #722f37;
+            --seal-gold: #c5a059;
+            --system-serif: "Iowan Old Style", "Palatino Linotype", "URW Palladio L", Pica, Georgia, serif;
+            --system-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            --system-mono: "Courier New", Courier, "Lucida Sans Typewriter", "Lucida Typewriter", monospace;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            background-color: var(--bg-cream);
+            color: var(--ink-navy);
+            font-family: var(--system-sans);
+            line-height: 1.6;
+            padding: 2rem 1rem;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+
+        header {
+            border-bottom: 2px double var(--border-color);
+            padding-bottom: 1.5rem;
+            margin-bottom: 2.5rem;
+            text-align: center;
+        }
+
+        header h1 {
+            font-family: var(--system-serif);
+            font-size: 2.5rem;
+            font-weight: 400;
+            letter-spacing: -0.03em;
+            color: var(--seal-burgundy);
+            margin-bottom: 0.5rem;
+        }
+
+        header p {
+            font-family: var(--system-serif);
+            font-style: italic;
+            color: var(--ink-muted);
+        }
+
+        .grid-inputs {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        @media (max-width: 768px) {
+            .grid-inputs { grid-template-columns: 1fr; }
+        }
+
+        .card {
+            background: #ffffff;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        }
+
+        .card h2 {
+            font-family: var(--system-serif);
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .file-dropzone {
+            border: 2px dashed var(--border-color);
+            padding: 2rem 1rem;
+            text-align: center;
+            background: var(--bg-cream);
+            cursor: pointer;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+
+        .file-dropzone:hover {
+            border-color: var(--seal-burgundy);
+            background: #fffdfa;
+        }
+
+        .file-dropzone input[type="file"] {
+            display: none;
+        }
+
+        .file-status {
+            margin-top: 0.75rem;
+            font-size: 0.875rem;
+            font-family: var(--system-mono);
+            color: var(--ink-muted);
+        }
+
+        .field-selector {
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .field-selector label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        select {
+            width: 100%;
+            padding: 0.5rem;
+            border: 1px solid var(--border-color);
+            background: var(--bg-cream);
+            font-family: var(--system-sans);
+            border-radius: 4px;
+        }
+
+        /* Ledger Table Visualization */
+        .ledger-container {
+            margin-top: 2.5rem;
+            display: none;
+        }
+
+        .ledger-container h3 {
+            font-family: var(--system-serif);
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            border: 1px solid var(--border-color);
+            background: #ffffff;
+            border-radius: 4px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-family: var(--system-mono);
+            font-size: 0.85rem;
+            text-align: left;
+        }
+
+        th, td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--bg-cream);
+        }
+
+        th {
+            background: var(--ink-navy);
+            color: #ffffff;
+            font-family: var(--system-sans);
+            font-weight: 500;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        tr:nth-child(even) {
+            background-color: #faf9f5;
+        }
+
+        .seal-check {
+            color: var(--seal-burgundy);
+            font-weight: bold;
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            text-align: center;
+            border-radius: 50%;
+            border: 1px dashed var(--seal-burgundy);
+            line-height: 18px;
+            font-size: 0.75rem;
+        }
+
+        /* Action Panel */
+        .action-panel {
+            margin-top: 2.5rem;
+            text-align: center;
+            display: none;
+        }
+
+        .btn-generate {
+            background-color: var(--seal-burgundy);
+            color: white;
+            border: none;
+            padding: 1rem 2.5rem;
+            font-family: var(--system-serif);
+            font-size: 1.25rem;
+            cursor: pointer;
+            border-radius: 4px;
+            box-shadow: 0 4px 10px rgba(114, 47, 55, 0.3);
+            transition: all 0.2s;
+        }
+
+        .btn-generate:hover {
+            background-color: #5a242a;
+            transform: translateY(-1px);
+        }
+
+        .btn-generate:disabled {
+            background-color: var(--border-color);
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        /* Progress Bar */
+        .progress-container {
+            margin-top: 1.5rem;
+            display: none;
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            background-color: #e2e8f0;
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            width: 0%;
+            height: 100%;
+            background-color: var(--seal-gold);
+            transition: width 0.1s ease;
+        }
+
+        .progress-text {
+            margin-top: 0.5rem;
+            font-family: var(--system-mono);
+            font-size: 0.85rem;
+            color: var(--ink-muted);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>MANIFEST</h1>
+        <p>The Last-Mile Certificate Matrix Utility</p>
+    </header>
+
+    <div class="grid-inputs">
+        <!-- Step 1: Document Upload -->
+        <div class="card">
+            <h2>1. Certificate Source</h2>
+            <div class="file-dropzone" onclick="document.getElementById('certInput').click()">
+                <p>Click to upload compiled certificate assets</p>
+                <span style="font-size: 0.8rem; color: var(--ink-muted);">(Accepts a single multi-page PDF or a .ZIP archive)</span>
+                <input type="file" id="certInput" accept=".pdf,.zip">
+            </div>
+            <div class="file-status" id="certStatus">No file structural registry loaded.</div>
+        </div>
+
+        <!-- Step 2: Roster / Data Manifest Upload -->
+        <div class="card">
+            <h2>2. Recipient Ledger</h2>
+            <div class="file-dropzone" onclick="document.getElementById('dataInput').click()">
+                <p>Click to upload recipient registration matrix</p>
+                <span style="font-size: 0.8rem; color: var(--ink-muted);">(Accepts .csv, .xlsx, or .xls)</span>
+                <input type="file" id="dataInput" accept=".csv,.xlsx,.xls">
+            </div>
+            <div class="file-status" id="dataStatus">No relational ledger metrics loaded.</div>
+
+            <div class="field-selector" id="namingFieldWrapper">
+                <label for="namingColumn select">Select Column for Naming Pattern:</label>
+                <select id="namingColumn"></select>
+            </div>
+        </div>
+    </div>
+
+    <!-- Step 3: Ledger Verification Alignment Matrix -->
+    <div class="card ledger-container" id="ledgerContainer">
+        <h3>Structural Alignment Matrix</h3>
+        <p style="font-size: 0.85rem; margin-bottom: 1rem; color: var(--ink-muted);">
+            Ensure the physical document layout ordering matches the positional parameters of the spreadsheet registry perfectly.
+        </p>
+        <div class="table-wrapper">
+            <table id="ledgerTable">
+                <thead>
+                    <tr>
+                        <th style="width: 70px;">Index</th>
+                        <th>Source Asset Identification Target</th>
+                        <th>Assigned Filename Mapping Target Output</th>
+                    </tr>
+                </thead>
+                <tbody id="ledgerBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Step 4: Execution Frame -->
+    <div class="action-panel" id="actionPanel">
+        <button class="btn-generate" id="generateBtn" onclick="processCertificates()">Execute Batch Renaming & Compile ZIP Archive</button>
+        
+        <div class="progress-container" id="progressContainer">
+            <div class="progress-bar-bg">
+                <div class="progress-bar-fill" id="progressFill"></div>
+            </div>
+            <div class="progress-text" id="progressText">Processing system buffers...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // State Space
+    let AppState = {
+        certType: null, // 'pdf' | 'zip'
+        certFile: null,
+        certCount: 0,
+        pdfDocArrayBuffer: null,
+        zipSourceFiles: [],
+        tableData: [],
+        headers: [],
+        selectedNameColumn: ''
+    };
+
+    // Event Listeners for file captures
+    document.getElementById('certInput').addEventListener('change', handleCertUpload);
+    document.getElementById('dataInput').addEventListener('change', handleDataUpload);
+    document.getElementById('namingColumn').addEventListener('change', function(e) {
+        AppState.selectedNameColumn = e.target.value;
+        renderLedgerTable();
+    });
+
+    async function handleCertUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        AppState.certFile = file;
+        const statusDiv = document.getElementById('certStatus');
+        statusDiv.innerHTML = `Loading parameters for: ${file.name}...`;
+
+        if (file.name.endsWith('.pdf')) {
+            AppState.certType = 'pdf';
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                AppState.pdfDocArrayBuffer = arrayBuffer;
+                const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer, { updateMetadata: false });
+                AppState.certCount = pdfDoc.getPageCount();
+                statusDiv.innerHTML = `📄 PDF Verified: Found ${AppState.certCount} linear document nodes inside.`;
+            } catch (err) {
+                statusDiv.innerHTML = `❌ Cryptographic compilation breakdown: Could not parse PDF.`;
+                console.error(err);
+            }
+        } else if (file.name.endsWith('.zip')) {
+            AppState.certType = 'zip';
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const zip = await JSZip.loadAsync(arrayBuffer);
+                AppState.zipSourceFiles = [];
+                
+                // Track non-directory files safely
+                zip.forEach((relativePath, zipEntry) => {
+                    if (!zipEntry.dir) {
+                        AppState.zipSourceFiles.push(zipEntry);
+                    }
+                });
+                
+                // Sort array alphanumerically to preserve deterministic positional alignment mapping
+                AppState.zipSourceFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true, sensitivity: 'base'}));
+                AppState.certCount = AppState.zipSourceFiles.length;
+                statusDiv.innerHTML = `📦 ZIP Verified: Found ${AppState.certCount} discrete compressed units.`;
+            } catch (err) {
+                statusDiv.innerHTML = `❌ Compressed extraction breakdown: Could not parse ZIP context.`;
+                console.error(err);
+            }
+        }
+        evaluateWorkflowState();
+    }
+
+    function handleDataUpload(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const statusDiv = document.getElementById('dataStatus');
+        statusDiv.innerHTML = `Parsing dataset structures...`;
+
+        const reader = new FileReader();
+        
+        if (file.name.endsWith('.csv')) {
+            reader.onload = function(evt) {
+                Papa.parse(evt.target.result, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: function(results) {
+                        processParsedMatrixData(results.data, results.meta.fields, statusDiv);
+                    }
+                });
+            };
+            reader.readAsText(file);
+        } else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+            reader.onload = function(evt) {
+                const data = new Uint8Array(evt.target.result);
+                const workbook = XLSX.read(data, {type: 'array'});
+                const firstSheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[firstSheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, {defval: ""});
+                
+                if(jsonData.length > 0) {
+                    const fields = Object.keys(jsonData[0]);
+                    processParsedMatrixData(jsonData, fields, statusDiv);
+                } else {
+                    statusDiv.innerHTML = `❌ Null metrics parsed from sheet.`;
+                }
+            };
+            reader.readAsArrayBuffer(file);
+        }
+    }
+
+    function processParsedMatrixData(data, fields, statusDiv) {
+        AppState.tableData = data;
+        AppState.headers = fields;
+        
+        statusDiv.innerHTML = `📊 Dataset Bound: Checked ${data.length} logical row references.`;
+        
+        // Populate layout field pickers
+        const select = document.getElementById('namingColumn');
+        select.innerHTML = '';
+        fields.forEach(f => {
+            const opt = document.createElement('option');
+            opt.value = f;
+            opt.innerText = f;
+            select.appendChild(opt);
+        });
+
+        // Smart selector defaults guessing common naming columns
+        const probableNameFields = ['name', 'fullname', 'full name', 'recipient', 'candidate'];
+        const matched = fields.find(f => probableNameFields.includes(f.toLowerCase().trim()));
+        if (matched) {
+            select.value = matched;
+        }
+
+        AppState.selectedNameColumn = select.value;
+        document.getElementById('namingFieldWrapper').style.display = 'block';
+        
+        evaluateWorkflowState();
+    }
+
+    function evaluateWorkflowState() {
+        if (AppState.certCount > 0 && AppState.tableData.length > 0) {
+            document.getElementById('ledgerContainer').style.display = 'block';
+            document.getElementById('actionPanel').style.display = 'block';
+            renderLedgerTable();
+        }
+    }
+
+    function renderLedgerTable() {
+        const tbody = document.getElementById('ledgerBody');
+        tbody.innerHTML = '';
+        
+        // Display maximum preview limit safely to protect layout speeds, but execute fully
+        const displayLimit = Math.max(AppState.certCount, AppState.tableData.length);
+        
+        for (let i = 0; i < displayLimit; i++) {
+            const tr = document.createElement('tr');
+            
+            // Index configuration
+            const tdIdx = document.createElement('td');
+            tdIdx.innerHTML = `<span class="seal-check">${i + 1}</span>`;
+            tr.appendChild(tdIdx);
+
+            // Source representation allocation
+            const tdSrc = document.createElement('td');
+            if (i < AppState.certCount) {
+                if (AppState.certType === 'pdf') {
+                    tdSrc.innerText = `Compiled Matrix Page Node #${i + 1}`;
+                } else {
+                    tdSrc.innerText = `${AppState.zipSourceFiles[i].name}`;
+                }
+            } else {
+                tdSrc.innerHTML = `<span style="color: red; font-style: italic;">Deficit: Missing associated raw document entity</span>`;
+            }
+            tr.appendChild(tdSrc);
+
+            // Output filename structural evaluation mapping
+            const tdOut = document.createElement('td');
+            if (i < AppState.tableData.length) {
+                const rowData = AppState.tableData[i];
+                const cleanTargetName = sanitizeFilename(String(rowData[AppState.selectedNameColumn] || 'Row_' + (i + 1)));
+                
+                let ext = '.pdf';
+                if (AppState.certType === 'zip') {
+                    const originalName = AppState.zipSourceFiles[i] ? AppState.zipSourceFiles[i].name : '';
+                    const dotIndex = originalName.lastIndexOf('.');
+                    ext = dotIndex !== -1 ? originalName.substring(dotIndex) : '.png';
+                }
+                
+                tdOut.innerText = `${cleanTargetName}${ext}`;
+            } else {
+                tdOut.innerHTML = `<span style="color: orange; font-style: italic;">Surplus: File will retain structural defaults</span>`;
+            }
+            tr.appendChild(tdOut);
+            tbody.appendChild(tr);
+        }
+    }
+
+    function sanitizeFilename(name) {
+        return name.replace(/[/\\?%*:|"<>]/g, '-').trim();
+    }
+
+    async function processCertificates() {
+        const btn = document.getElementById('generateBtn');
+        const progressContainer = document.getElementById('progressContainer');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+
+        btn.disabled = true;
+        progressContainer.style.display = 'block';
+
+        const outputZip = new JSZip();
+
+        if (AppState.certType === 'pdf') {
+            try {
+                progressText.innerText = "Initializing master PDF byte array buffer states...";
+                progressFill.style.width = `5%`;
+                
+                const basePdfDoc = await PDFLib.PDFDocument.load(AppState.pdfDocArrayBuffer);
+                const loopLimit = Math.min(AppState.certCount, AppState.tableData.length);
+
+                for (let i = 0; i < loopLimit; i++) {
+                    progressText.innerText = `Isolating page nodes: processing document frame ${i + 1} of ${loopLimit}...`;
+                    
+                    const singlePageDoc = await PDFLib.PDFDocument.create();
+                    const [copiedPage] = await singlePageDoc.copyPages(basePdfDoc, [i]);
+                    singlePageDoc.addPage(copiedPage);
+                    
+                    const pdfBytes = await singlePageDoc.save();
+                    
+                    const rowData = AppState.tableData[i];
+                    const outName = sanitizeFilename(String(rowData[AppState.selectedNameColumn] || 'Row_' + (i + 1))) + ".pdf";
+                    
+                    outputZip.file(outName, pdfBytes);
+                    
+                    // Update layout UI tracking progression metrics sequentially
+                    const percent = Math.floor((i / loopLimit) * 85) + 5;
+                    progressFill.style.width = `${percent}%`;
+                    
+                    // Yield operational controls briefly to maintain responsive thread ticks
+                    await new Promise(r => setTimeout(r, 5));
+                }
+
+            } catch (err) {
+                alert("An error compromised processing vector parameters: " + err.message);
+                btn.disabled = false;
+                return;
+            }
+        } else if (AppState.certType === 'zip') {
+            try {
+                const loopLimit = Math.min(AppState.certCount, AppState.tableData.length);
+                const sourceZip = await JSZip.loadAsync(AppState.certFile.arrayBuffer());
+
+                for (let i = 0; i < loopLimit; i++) {
+                    progressText.innerText = `Extracting, rewriting, and encoding asset frame ${i + 1} of ${loopLimit}...`;
+                    
+                    const sourceEntry = AppState.zipSourceFiles[i];
+                    const assetData = await sourceZip.file(sourceEntry.name).async("uint8array");
+                    
+                    const originalName = sourceEntry.name;
+                    const dotIndex = originalName.lastIndexOf('.');
+                    const ext = dotIndex !== -1 ? originalName.substring(dotIndex) : '.png';
+                    
+                    const rowData = AppState.tableData[i];
+                    const outName = sanitizeFilename(String(rowData[AppState.selectedNameColumn] || 'Row_' + (i + 1))) + ext;
+                    
+                    outputZip.file(outName, assetData);
+                    
+                    const percent = Math.floor((i / loopLimit) * 85) + 5;
+                    progressFill.style.width = `${percent}%`;
+                    await new Promise(r => setTimeout(r, 5));
+                }
+            } catch (err) {
+                alert("An error compromised processing vector parameters: " + err.message);
+                btn.disabled = false;
+                return;
+            }
+        }
+
+        progressText.innerText = "Compiling and packaging downstream ZIP payload...";
+        progressFill.style.width = `95%`;
+        
+        outputZip.generateAsync({type: "blob"}).then(function(content) {
+            progressFill.style.width = `100%`;
+            progressText.innerText = "Batch sequence executed successfully. Delivery verified.";
+            
+            // Build temporary download link layout anchor target pipelines safely
+            const url = window.URL.createObjectURL(content);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `manifest_batch_${Date.now()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            btn.disabled = false;
+        });
+    }
+</script>
+</body>
+</html>
