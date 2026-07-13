@@ -1,4 +1,4 @@
-# Manifest (or Unbulk) // The Last-Mile Certificate Matrix Utility
+# Manifest // The Last-Mile Certificate Matrix Utility
 
 A blazing fast, **100% client-side browser utility** designed to solve the painful "last mile" of bulk certificate generation. 
 
